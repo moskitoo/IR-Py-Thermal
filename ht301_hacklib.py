@@ -113,68 +113,81 @@ class Camera:
             except: pass
         raise ValueError(f"Cannot find camera with a width of one of {cls.supported_resolutions} that also matches: {width=} and {height=}")
 
+    def bin_to_twos_complement(self, binary: str) -> int:
+        if binary[0] == '1':
+            return int(binary, 2) - 2**len(binary)
+        return int(binary, 2)
+
     def info(self) -> Tuple[dict, np.ndarray]:
-        shutTemper = read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 1)
+        shutTemper = read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 1) # 257
         if self.camera_raw:
-            if shutTemper < 0x801:
+            if shutTemper < 2049:
                 floatShutTemper = float(shutTemper)
                 corrFactor = 0.625
             else:
                 floatShutTemper = float(0xfff - shutTemper)
                 corrFactor = -0.625
+            shutterFix = self.bin_to_twos_complement((bin(read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels * 2 + 47))[2:].zfill(16))[:8]) / 10.0 # 559
             floatShutTemper = (floatShutTemper * corrFactor + 2731.5) / 10.0 + -273.15
+            floatShutTemper = floatShutTemper + shutterFix
             # TODO fix this readout for the T2S+ v2
             # The temperature is indeed being red out, but the sensor is located in some weird place,
             # it gets hot super fast and causes the entire image to drift, I couldn't figure out how to deal with that
             # hard coding ~18C (room temp) works pretty good tho...
-            floatShutTemper = 18.0
+            #floatShutTemper = 18.0
         else:
             floatShutTemper = shutTemper / 10.0 - self.ZEROC
 
-        coreTemper = read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 2)
+        coreTemper = read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 2) # 258
         if self.camera_raw:
             # TODO fix this readout for the T2S+ v2
             # I don't even think the v2 has a separate core and shutter temperature registers...
-            floatCoreTemper = 18.0
+            #floatCoreTemper = 18.0
+            floatCoreTemper = floatShutTemper - shutterFix
+            #floatShutTemper = 18.0
         else:
             floatCoreTemper = coreTemper / 10.0 - self.ZEROC
+
+        # print(f"Shutter temperature: {floatShutTemper}°C, Core temperature: {coreTemper / 10.0 - self.ZEROC}°C")
         
-        cal_00 = float(read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels))
-        self.cal_01 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 3)
-        cal_02 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 5)
-        cal_03 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 7)
-        cal_04 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 9)
-        cal_05 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 11)
+        # TODO check all of these
+        cal_00 = float(read_u16(self.frame_raw_u16, self.fourLinePara + self.amountPixels)) # 256
+        self.cal_01 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 3) # 259
+        cal_02 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 5) # 261
+        cal_03 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 7) # 263
+        cal_04 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 9) # 265
+        cal_05 = read_f32(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 11) # 267
         
-        cameraSoftVersion: np.ndarray = read_u8(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 24, step=8)
+        cameraSoftVersion: np.ndarray = read_u8(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 24, step=8) # 280-287?
         cameraSoftVersion = cameraSoftVersion.tobytes().decode("ascii").rstrip("\x00")
         
-        sn: np.ndarray = read_u8(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 32, step=3) 
-        sn = sn.tobytes().decode("ascii").rstrip("\x00")
+        # this one is reading out incorrectly?
+        sn: np.ndarray = read_u8(self.frame_raw_u16, self.fourLinePara + self.amountPixels + 32, step=3) # 288-290?
+        sn = sn.tobytes().decode("ascii").rstrip("\x00") 
         
-        correction = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea)
-        Refltmp = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 2)
-        Airtmp = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 4)
-        humi = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 6)
-        emiss = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 8) 
-        distance = read_u16(self.frame_raw_u16, self.fourLinePara + self.userArea + 10)
+        correction = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea) # 383
+        Refltmp = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 2) # 385
+        Airtmp = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 4) # 387
+        humi = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 6) # 389
+        emiss = read_f32(self.frame_raw_u16, self.fourLinePara + self.userArea + 8) # 391
+        distance = read_u16(self.frame_raw_u16, self.fourLinePara + self.userArea + 10) # 393
 
-        fpa_avg = read_u16(self.frame_raw_u16, self.fourLinePara)
-        fpaTmp = read_u16(self.frame_raw_u16, self.fourLinePara + 1)
-        maxx1 = read_u16(self.frame_raw_u16, self.fourLinePara + 2)
-        maxy1 = read_u16(self.frame_raw_u16, self.fourLinePara + 3)
-        self.max_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 4)
-        minx1 = read_u16(self.frame_raw_u16, self.fourLinePara + 5)
-        miny1 = read_u16(self.frame_raw_u16, self.fourLinePara + 6)
-        self.min_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 7)
-        self.avg_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 8)
+        fpa_avg = read_u16(self.frame_raw_u16, self.fourLinePara) # 0
+        fpaTmp = read_u16(self.frame_raw_u16, self.fourLinePara + 1) # 1
+        maxx1 = read_u16(self.frame_raw_u16, self.fourLinePara + 2) # 2
+        maxy1 = read_u16(self.frame_raw_u16, self.fourLinePara + 3) # 3
+        self.max_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 4) # 4
+        minx1 = read_u16(self.frame_raw_u16, self.fourLinePara + 5) # 5
+        miny1 = read_u16(self.frame_raw_u16, self.fourLinePara + 6) # 6
+        self.min_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 7) # 7
+        self.avg_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 8) # 8
         
         fpatmp_ = 20.0 - (float(fpaTmp) - self.fpa_off) / self.fpa_div
         
-        center_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 12)
-        user_raw00 = read_u16(self.frame_raw_u16, self.fourLinePara + 13)
-        user_raw01 = read_u16(self.frame_raw_u16, self.fourLinePara + 14)
-        user_raw02 = read_u16(self.frame_raw_u16, self.fourLinePara + 15)
+        center_raw = read_u16(self.frame_raw_u16, self.fourLinePara + 12) # 12
+        user_raw00 = read_u16(self.frame_raw_u16, self.fourLinePara + 13) # 13
+        user_raw01 = read_u16(self.frame_raw_u16, self.fourLinePara + 14) # 14
+        user_raw02 = read_u16(self.frame_raw_u16, self.fourLinePara + 15) # 15
         
         distance_adjusted = (20.0 if distance >= 20.0 else distance) * self.distance_multiplier
         atm = self.atmt(humi, Airtmp, distance_adjusted)
@@ -234,7 +247,7 @@ class Camera:
             "Tmax_C": temperatureTable[self.max_raw],
             "Tcenter_C": temperatureTable[center_raw],
         }
-        
+
         return info, temperatureTable
     
     # read raw data from cam, seperate visible frame from metadata
@@ -362,11 +375,12 @@ class Camera:
         frame_visible_float = frame_visible.astype(np.float32)
         min_val = np.min(frame_visible_float)
         max_val = np.max(frame_visible_float)
-        threshold_margin = (max_val - min_val) * 0.05  # Adjust the multiplier as needed
+        print(f"Min: {min_val}, Max: {max_val}, Avg: {np.mean(frame_visible_float)}")
+        threshold_margin = (max_val - min_val) * 0.05  # Adjust the margin if not detected correctly
         threshold = min_val + threshold_margin
 
-        # if there are no dead pixels, we don't need to do anything
-        if np.count_nonzero(frame_visible_float < threshold) == 0:
+        # if there are no dead pixels, we skip the dead pixel correction
+        if np.count_nonzero(frame_visible_float < threshold) != 0:
             self.dead_pixels_mask = cv2.inRange(frame_visible_float, 0, threshold).astype(np.uint8)
 
         if not quiet:
@@ -441,6 +455,7 @@ class Camera:
         n[np.isnan(n)] = 0.0        
         wtot = np.power(n - self.cal_a + self.ZEROC, 4)
         ttot = np.power((wtot - self.numerator_sub) / self.denominator, 0.25) - self.ZEROC
+        # TODO, ttot is being directly read out according to the decomp, how is it calculated here exactly? (fVar7) offset ~269
         temperatureTable = ttot + (distance_adjusted * 0.85 - 1.125) * (ttot - Airtmp) / 100.0 + correction
         return self.correction_coefficient_m * temperatureTable + self.correction_coefficient_b
 
