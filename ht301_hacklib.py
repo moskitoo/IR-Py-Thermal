@@ -62,7 +62,7 @@ class Camera:
     offset_mean = 0.0
     dead_pixels_mask = None
 
-    def __init__(self, video_dev:cv2.VideoCapture|None=None, camera_raw = False) -> None:
+    def __init__(self, video_dev:cv2.VideoCapture|None=None, camera_raw = False, fixed_offset : float = 0.0) -> None:
         if video_dev is None:
             video_dev = self.find_device()
         if not video_dev:
@@ -72,6 +72,7 @@ class Camera:
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))-ROWS_SPECIAL_DATA
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
 
+        self.userOffset = fixed_offset
 
         self.fourLinePara = self.width * self.height
         self.init_parameters()
@@ -210,6 +211,8 @@ class Camera:
         table_offset = cal_00 - (cal_00_corr if cal_00_corr > 0 else 0)
         
         temperatureTable = self.get_temp_table(correction, Airtmp, table_offset, distance_adjusted)
+
+        temperatureTable = temperatureTable + self.userOffset
         
         ''' build infomation '''
         info = {
@@ -271,6 +274,13 @@ class Camera:
             frame_visible = corrected_frame.astype(np.uint16)
         
         return ret, frame_visible
+
+    def get_frame(self) -> np.ndarray:
+        ret, frame = self.read()
+        info, lut = self.info()
+        lut_frame = lut[frame]
+        return lut_frame
+
 
     def set_correction(self, correction: float) -> None:
         self.sendFloatCommand(position=SET_CORRECTION, value=correction)
@@ -477,7 +487,7 @@ class Camera:
         self.correction_coefficient_b = -40.9
 
     def wait_for_range_application(self, timeout=20):
-        """Wait for the camera to apply the temperature range change, this is detected when the video stops being uniform"""
+        """Wait for the camera to apply the temperature range change"""
         print("Waiting for camera to stabilize...")
         start_time = time.time()
         done = False
