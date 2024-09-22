@@ -1,0 +1,11 @@
+libUVCCamera: [20119*serenegiant_usb_UVCCamera.cpp:226:nativeGetByteArrayTemperaturePara]:nativeGetByteArrayTemperaturePara:0,0,0,0,0
+jsonObject: {"doAction":1,"deviceSn":"ME1299","deviceModel":"google,Pixel 3","deviceNo":"T2S+","appVersion":"6.7.240509","osVersion":"Android12,level31"}
+libUVCCamera: [20206*thermometry.c:367:EAthermometryT4Line]:EAthermometryT4Line start 
+libUVCCamera: [20206*thermometry.c:368:EAthermometryT4Line]:correction:0.000000, Refltmp:25.000000,Airtmp:25.000000 ,humi:0.450000,emiss:0.980000,distance:1
+libUVCCamera: [20206*thermometry.c:417:EAthermometryT4Line]:shutTemper:451
+libUVCCamera: [20206*thermometry.c:446:EAthermometryT4Line]:a:0.234700, b:31.179001, ka:-0.000010, kb:0.008200, kc:0.745000
+libUVCCamera: [20206*thermometry.c:458:EAthermometryT4Line]:correction:0.000000, Refltmp:25.000000, Airtmp:25.000000, humi:0.450000, emiss:0.980000, distance:1
+libUVCCamera: [20206*thermometry.c:486:EAthermometryT4Line]:WriteTable  fpatemp:29.53, shuttemp:27.59, floatShutTemper:28.19, shutterFix:-0.60
+libUVCCamera: [20206*thermometry.c:549:EAthermometryT4Line]:EAthermometryT4Line end 
+MediaPlayerNative: pause called in state 8, mPlayer(0x78c52c1eb0)
+MediaPlayerNative: error (-38, 0)

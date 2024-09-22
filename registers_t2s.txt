@@ -1,0 +1,170 @@
+Registers of the 4 line params and what they mean for the T2S+ v2
+The values are specified from zero being the start of the 4 line params.
+
+Abbreviations:
+FPA - Focal Plane Array
+
+--- LINE ZERO ---
+
+0: FPA average value
+1: Temperate of the FPA?
+2-15: ZERO
+16: UNKNOWN (value: 15805)
+17-255: ZERO
+
+--- LINE ONE ---
+
+256: cal_00?
+257: Shutter Temperate
+258: Core Temperate (reads 0 tho)
+259-260: cal_01?
+261-262: cal_02?
+263-264: cal_03?
+265-266: cal_04?
+267-268: cal_05?
+268-271: ZERO
+272: UNKNOWN (value: 16840)
+273: ZERO
+274: UNKNOWN (value: 16840)
+275: UNKNOWN (value: 26214)
+276: UNKNOWN (value: 16102)
+277: UNKNOWN (value: 57672)
+278: UNKNOWN (value: 16250)
+279: UNKNOWN (value: 1)
+280-287: Software version string
+288-289: ZERO
+290-293: Serial Number?
+294-295: ZERO
+296: UNKNOWN (value: 12884)
+297: UNKNOWN (value: 11091)
+298: UNKNOWN (value: 13312)
+299: UNKNOWN (value: 76)
+300: UNKNOWN (value: 12371)
+301: UNKNOWN (value: 57856)
+302: UNKNOWN (value: 63430)
+303-382: ZERO
+
+--- USER DATA ---
+
+383-384: Correction
+385-386: Refltmp
+387-388: Air temperate
+389-390: Humidity
+391-392: Emissivity
+393-394: Distance
+395-511: ZERO
+
+--- LINE TWO ---
+
+512: UNKNOWN (value: 17741)
+513: UNKNOWN (value: 12849)
+514: UNKNOWN (value: 14649)
+515: UNKNOWN (value: 21504)
+516: UNKNOWN (value: 21298)
+517: UNKNOWN (value: 43)
+518-519: ZERO
+520: UNKNOWN (value: 12884) same as 296
+521: UNKNOWN (value: 11091) same as 297
+522: UNKNOWN (value: 13312) same as 298
+523: UNKNOWN (value: 76) same as 299
+524: UNKNOWN (value: 12371) same as 300
+525: UNKNOWN (value: 57856) same as 301
+526: UNKNOWN (value: 63430) same as 302
+527: ZERO
+528: UNKNOWN (value: 48641)
+529: UNKNOWN (value: 8965)
+530: UNKNOWN (value: 256)
+531: ZERO
+532: UNKNOWN (value: 259)
+533: UNKNOWN (value: 1)
+534: UNKNOWN (value: 100)
+535: UNKNOWN (value: 1)
+536: UNKNOWN (value: 256)
+537: UNKNOWN (value: 276)
+538: UNKNOWN (value: 150)
+539: ZERO
+540: UNKNOWN (value: 258)
+541: UNKNOWN (value: 1200)
+542: UNKNOWN (value: 100)
+543: UNKNOWN (value: 100)
+544: UNKNOWN (value: 100)
+545: UNKNOWN (value: 350)
+546: UNKNOWN (value: 70)
+547: UNKNOWN (value: 3072)
+548: UNKNOWN (value: 768)
+549: UNKNOWN (value: 65280)
+550: UNKNOWN (value: 127)
+551: ZERO
+552: UNKNOWN (value: 513)
+553: UNKNOWN (value: 3594)
+554: UNKNOWN (value: 3331)
+555: UNKNOWN (value: 20)
+556-558: ZERO
+559: UNKNOWN (value: 64000)
+560: UNKNOWN (value: 21810)
+561: UNKNOWN (value: 15984)
+562: UNKNOWN (value: 28312)
+563: UNKNOWN (value: 16889)
+564: UNKNOWN (value: 50604)
+565: UNKNOWN (value: 46887)
+566: UNKNOWN (value: 22859)
+567: UNKNOWN (value: 15366)
+568: UNKNOWN (value: 47186)
+569: UNKNOWN (value: 16190)
+570-572: ZERO
+573: UNKNOWN (value: 16840)
+574: ZERO
+575: UNKNOWN (value: 16840)
+576: UNKNOWN (value: 26214)
+577: UNKNOWN (value: 16102)
+578: UNKNOWN (value: 57672)
+579: UNKNOWN (value: 16250)
+580: UNKNOWN (value: 1)
+581: UNKNOWN (value: 12059)
+582: UNKNOWN (value: 15581)
+583: UNKNOWN (value: 33345)
+584: UNKNOWN (value: 16314)
+585: UNKNOWN (value: 50604)
+586: UNKNOWN (value: 14375)
+587: UNKNOWN (value: 65012)
+588: UNKNOWN (value: 15316)
+589: UNKNOWN (value: 65012)
+590: UNKNOWN (value: 16132)
+591: UNKNOWN (value: 17280)
+592: UNKNOWN (value: 257)
+593: UNKNOWN (value: 3156)
+594: UNKNOWN (value: 8967)
+595: UNKNOWN (value: 3875)
+596: UNKNOWN (value: 8967)
+597: UNKNOWN (value: 3137)
+598: UNKNOWN (value: 7938)
+599: UNKNOWN (value: 3875)
+600: UNKNOWN (value: 7943)
+601: UNKNOWN (value: 3137)
+602: UNKNOWN (value: 7426)
+603: UNKNOWN (value: 3875)
+604: UNKNOWN (value: 7943)
+605: UNKNOWN (value: 3393)
+606: UNKNOWN (value: 7938)
+607: UNKNOWN (value: 3875)
+608: UNKNOWN (value: 7943)
+609: UNKNOWN (value: 45442)
+610: UNKNOWN (value: 59280)
+611: UNKNOWN (value: 616)
+612: UNKNOWN (value: 2113)
+613: UNKNOWN (value: 45825)
+614: UNKNOWN (value: 9955)
+615: UNKNOWN (value: 24807)
+616: UNKNOWN (value: 3968)
+617: UNKNOWN (value: 14980)
+618: UNKNOWN (value: 8132)
+619: UNKNOWN (value: 2721)
+620: ZERO
+621-624: 65535
+624-767: ZERO
+
+--- LINE THREE ---
+768-1023: ZERO
+
+
+

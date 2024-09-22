@@ -26,6 +26,7 @@ draw_temp = True
 parser = argparse.ArgumentParser(description='Thermal Camera Viewer')
 parser.add_argument('-r', '--rawcam', action='store_true', help='use the raw camera')
 parser.add_argument('-d', '--device', type=str, help='use the camera at camera_path')
+parser.add_argument('-o', '--offset', type=float, help='set a fixed offset for the temperature data')
 parser.add_argument('file', nargs='?', type=str, help='use the emulator with the data in file.npy')
 args = parser.parse_args()
 
@@ -42,6 +43,8 @@ else:
         camera_path = args.device
         cv2_cam = cv2.VideoCapture(camera_path)
         camera_kwargs['video_dev'] = cv2_cam
+    if args.offset:
+        camera_kwargs['fixed_offset'] = args.offset
     camera = ht301_hacklib.Camera(**camera_kwargs)
 
 #see https://matplotlib.org/tutorials/colors/colormaps.html
@@ -51,8 +54,7 @@ cmaps = ['inferno', 'coolwarm', 'cividis', 'jet', 'nipy_spectral', 'binary', 'gr
 matplotlib.rcParams['toolbar'] = 'None'
 
 # temporary fake frame
-lut_frame = frame = np.full((camera.height, camera.width), 25.)
-info = {}
+frame = np.full((camera.height, camera.width), 25.)
 lut = None # will be defined later
 
 fig = plt.figure()
@@ -64,7 +66,7 @@ except:
     pass
 
 ax = plt.gca()
-im = ax.imshow(lut_frame, cmap=cmaps[cmaps_idx])
+im = ax.imshow(frame, cmap=cmaps[cmaps_idx])
 divider = make_axes_locatable(ax)
 cax = divider.append_axes("right", size="5%", pad=0.05)
 cbar = plt.colorbar(im, cax=cax)
@@ -122,21 +124,19 @@ def log_annotations_to_csv(annotation_frame):
 
 
 def animate_func(i):
-    global lut, frame, info, paused, update_colormap, exposure, im, diff, lut_frame
-    ret, frame = camera.read()
+    global frame, paused, update_colormap, exposure, im, diff
+    frame = camera.get_frame()
     if not paused:
-        info, lut = camera.info()
-        lut_frame = lut[frame]
 
         if diff['enabled']:
-            show_frame = lut_frame - diff['frame']
+            show_frame = frame - diff['frame']
         else:
-            show_frame = lut_frame
+            show_frame = frame
 
         if diff['annotation_enabled']:
-            annotation_frame = lut_frame - diff['frame']
+            annotation_frame = frame - diff['frame']
         else:
-            annotation_frame = lut_frame
+            annotation_frame = frame
 
         im.set_array(show_frame)
 
@@ -184,10 +184,10 @@ FILE_NAME_FORMAT = "%Y-%m-%d_%H-%M-%S"
 #keyboard
 def press(event):
     global paused, exposure, update_colormap, cmaps_idx, draw_temp, temp_extra_annotations, csv_filename
-    global lut_frame, lut, frame, diff, annotations, roi
+    global lut, frame, diff, annotations, roi
     if event.key == 'h': print_help()
     if event.key == ' ': paused ^= True; print('paused:', paused)
-    if event.key == 'd': diff['frame'] = lut_frame; diff['annotation_enabled'] = diff['enabled'] = True; print('set   diff')
+    if event.key == 'd': diff['frame'] = frame; diff['annotation_enabled'] = diff['enabled'] = True; print('set   diff')
     if event.key == 'x': diff['enabled'] ^= True; print('enable diff:', diff['enabled'])
     if event.key == 'c': diff['annotation_enabled'] ^= True; print('enable annotation diff:', diff['annotation_enabled'])
     if event.key == 't': draw_temp ^= True; print('draw temp:', draw_temp)
