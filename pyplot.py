@@ -6,12 +6,20 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.patches as patches
-from matplotlib.backend_bases import MouseButton
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-import ht301_hacklib
 import utils
 import time
 import sys
+import csv
+import math
+import serial
+
+import ht301_hacklib
+
+from matplotlib.backend_bases import MouseButton
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from datetime import datetime
+
+
 
 fps = 40
 exposure = {'auto': True,
@@ -27,11 +35,21 @@ parser = argparse.ArgumentParser(description='Thermal Camera Viewer')
 parser.add_argument('-r', '--rawcam', action='store_true', help='use the raw camera')
 parser.add_argument('-d', '--device', type=str, help='use the camera at camera_path')
 parser.add_argument('-o', '--offset', type=float, help='set a fixed offset for the temperature data')
+
+# lock in thermometry options (all of these are requred)
+parser.add_argument('-l', '--lockin', type=float, help='enable lock-in thermometry with the given frequency (in Hz), ideally several times smaller than the camera fps')
+parser.add_argument('-p', '--port', type=str, help='set the serial port for the power supply control (will send 1 to turn on the load, 0 to turn it off new line terminated) at 115200 baud')
+parser.add_argument('-i', '--integration', type=float, help='set the integration time for the lock-in thermometry (in seconds)')
+
+
+
 parser.add_argument('file', nargs='?', type=str, help='use the emulator with the data in file.npy')
 args = parser.parse_args()
 
 # Choose the camera class
 camera: ht301_hacklib.Camera
+
+lockin = False
 
 if args.file and args.file.endswith('.npy'):
     camera = ht301_hacklib.CameraEmulator(args.file)
@@ -45,6 +63,19 @@ else:
         camera_kwargs['video_dev'] = cv2_cam
     if args.offset:
         camera_kwargs['fixed_offset'] = args.offset
+
+    if args.lockin:
+        lockin = True
+        draw_temp = False
+        # check if all lock-in thermometry options are provided
+        if not args.port or not args.integration:
+            print('Error: lock-in thermometry also requires --port and --integration options')
+            sys.exit(1)
+
+        fequency = args.lockin
+        port = args.port
+        integration = args.integration
+
     camera = ht301_hacklib.Camera(**camera_kwargs)
 
 #see https://matplotlib.org/tutorials/colors/colormaps.html
@@ -56,6 +87,7 @@ matplotlib.rcParams['toolbar'] = 'None'
 # temporary fake frame
 frame = np.full((camera.height, camera.width), 25.)
 lut = None # will be defined later
+start_skips = 2
 
 fig = plt.figure()
 
@@ -92,8 +124,7 @@ diff = { 'enabled': False,
          'frame': np.zeros(frame.shape)
 }
 
-import csv
-from datetime import datetime #to easily get miliseconds
+
 csv_filename = None
 def log_annotations_to_csv(annotation_frame):
     anns_data = []
@@ -121,11 +152,92 @@ def log_annotations_to_csv(annotation_frame):
         with open(csv_filename, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([datetime.now()] + anns_data)
+
+
+
+def get_lockin_frame(freq, port, integration):
+    """This function will perform all of the lock-in thermometry operations, and return 
+    the in-phase and quadrature frames after the integration time is up, while controlling 
+    the load via serial communication based on the period of the signal."""
+    
+    try:
+        ser = serial.Serial(port, 115200)  # Open the serial port
+    except serial.SerialException as e:
+        print(f'Error: could not open serial port {port}')
+        sys.exit(1)
+
+    start_time = time.time()
+    in_phase_sum = np.zeros((camera.height, camera.width))
+    quadrature_sum = np.zeros((camera.height, camera.width))
+    total_frames = 0
+    
+    # Calculate the period of the signal
+    period = 1.0 / freq
+    half_period = period / 2.0  # Toggle every half period
+    load_on = True  # Track whether the load is on or off
+    last_toggle_time = start_time  # Track the last time we toggled the load
+    
+    while (time.time() - start_time) < integration:
+        current_time = time.time() - start_time  # Time since the loop started
+        ret, frame = camera.read()
+        if not ret:
+            print('Error: could not read frame from camera')
+            sys.exit(1)
+        
+        total_frames += 1
+        
+        if(total_frames % 10 == 0):
+            print(f'Frame: {total_frames}, Time: {current_time:.2f}/{integration:.2f}')  # Debugging statement
+
+        # Check if a half period has passed (i.e., time to toggle the load)
+        if current_time - (last_toggle_time - start_time) >= half_period:
+            # Toggle the load state
+            if load_on:
+                ser.write(b'0\n')  # Send 0 to turn the load off
+                load_on = False
+            else:
+                ser.write(b'1\n')  # Send 1 to turn the load on
+                load_on = True
+            
+            # print(f'Load state: {load_on}, Time: {current_time}')  # Debugging statement
+            
+            # Update the last toggle time
+            last_toggle_time += half_period
+        
+        # Calculate the phase angle based on the current time and frequency
+        phase = 2 * math.pi * freq * current_time
+        
+        # Calculate sine and cosine factors
+        sin_weight = 2*math.sin(phase)
+        cos_weight = -2*math.cos(phase)
+        
+        # print(f"time: {current_time}, phase: {phase}, sin: {sin_weight}, cos: {cos_weight} , load: {load_on}")
+
+        # Multiply the frame by sin and cos to get in-phase and quadrature components
+        in_phase = frame * sin_weight
+        quadrature = frame * cos_weight
+        
+        # Accumulate the sums
+        in_phase_sum += in_phase
+        quadrature_sum += quadrature
+
+    # After integration time, normalize by the total frames (optional)
+    in_phase_sum /= total_frames
+    quadrature_sum /= total_frames
+    
+    return in_phase_sum, quadrature_sum
 
 
 def animate_func(i):
-    global frame, paused, update_colormap, exposure, im, diff
-    frame = camera.get_frame()
+    global frame, paused, update_colormap, exposure, im, diff, start_skips
+    if lockin and start_skips > 0:
+        frame = camera.get_frame()
+        start_skips -= 1
+    elif lockin:
+        frame, quad_frame = get_lockin_frame(fequency, port, integration)
+    else:
+        frame = camera.get_frame()
+
     if not paused:
 
         if diff['enabled']:
