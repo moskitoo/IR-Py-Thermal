@@ -83,6 +83,7 @@ The modulation frequency should ideally be at least set 10x lower than the camer
 - https://github.com/MCMH2000/OpenHD_HT301_Driver
 - https://github.com/sumpster/ht301_viewer
 - https://github.com/cmair/ht301_hacklib
+- https://github.com/stawel/ht301_hacklib
 - https://github.com/mcguire-steve/ht301_ircam
 
 ## Related materials
