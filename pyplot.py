@@ -12,6 +12,7 @@ import sys
 import csv
 import math
 import serial
+import threading
 
 import ht301_hacklib
 
@@ -82,26 +83,67 @@ else:
 cmaps_idx = 1
 cmaps = ['inferno', 'coolwarm', 'cividis', 'jet', 'nipy_spectral', 'binary', 'gray', 'tab10']
 
-matplotlib.rcParams['toolbar'] = 'None'
+#matplotlib.rcParams['toolbar'] = 'None'
 
 # temporary fake frame
 frame = np.full((camera.height, camera.width), 25.)
+quad_frame = np.full((camera.height, camera.width), 0.)
+in_phase_frame = np.full((camera.height, camera.width), 0.)
 lut = None # will be defined later
 start_skips = 2
+is_capturing = False
+lock = threading.Lock()
+lock_in_thread = None
 
-fig = plt.figure()
+
+if lockin:
+    fig, axes = plt.subplots(nrows=2, ncols=2, layout='tight')
+    ax = axes[0][0]
+    im = axes[0][0].imshow(frame, cmap=cmaps[cmaps_idx])      
+    im_in_phase = axes[0][1].imshow(frame, cmap=cmaps[cmaps_idx]) 
+    im_quadrature = axes[1][1].imshow(frame, cmap=cmaps[cmaps_idx]) 
+    axes[0][0].set_title('Live')
+    axes[0][1].set_title('In-phase')
+    axes[1][1].set_title('Quadrature')
+    divider = make_axes_locatable(axes[0][0])
+    divider_in_phase = make_axes_locatable(axes[0][1])
+    divider_quadrature = make_axes_locatable(axes[1][1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cax_in_phase = divider_in_phase.append_axes("right", size="5%", pad=0.05)
+    cax_quadrature = divider_quadrature.append_axes("right", size="5%", pad=0.05)
+    cbar = plt.colorbar(im, cax=cax)
+    cbar_in_phase = plt.colorbar(im_in_phase, cax=cax_in_phase)
+    cbar_quadrature = plt.colorbar(im_quadrature, cax=cax_quadrature)
+
+    axes[1][0].axis('off')
+    status_text = f"""
+Frame: -,
+Time: -/-,
+Load: -,
+Frequency: -Hz,
+Integration Time: -s
+Serial Port: -
+"""
+    status_text_obj = axes[1][0].text(0.05, 0.95, status_text, 
+                    verticalalignment='top', 
+                    horizontalalignment='left',
+                    transform=axes[1][0].transAxes, 
+                    fontsize=12, 
+                    color='black')
+
+else:
+    fig = plt.figure()
+    ax = plt.gca()
+    im = ax.imshow(frame, cmap=cmaps[cmaps_idx])
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    cbar = plt.colorbar(im, cax=cax)
 
 try:
     fig.canvas.set_window_title("Thermal Camera")
 except:
     # does not work on windows
     pass
-
-ax = plt.gca()
-im = ax.imshow(frame, cmap=cmaps[cmaps_idx])
-divider = make_axes_locatable(ax)
-cax = divider.append_axes("right", size="5%", pad=0.05)
-cbar = plt.colorbar(im, cax=cax)
 
 annotations = utils.Annotations(ax, patches)
 temp_annotations =  {
@@ -160,6 +202,8 @@ def get_lockin_frame(freq, port, integration):
     the in-phase and quadrature frames after the integration time is up, while controlling 
     the load via serial communication based on the period of the signal."""
     
+    global frame, is_capturing, status_text
+
     try:
         ser = serial.Serial(port, 115200)  # Open the serial port
     except serial.SerialException as e:
@@ -179,15 +223,28 @@ def get_lockin_frame(freq, port, integration):
     
     while (time.time() - start_time) < integration:
         current_time = time.time() - start_time  # Time since the loop started
-        ret, frame = camera.read()
+        ret, raw_frame = camera.read()
+        info, lut = camera.info()
+
+        frame = camera.convert_to_frame(raw_frame, lut)
+
         if not ret:
             print('Error: could not read frame from camera')
             sys.exit(1)
         
         total_frames += 1
         
-        if(total_frames % 10 == 0):
-            print(f'Frame: {total_frames}, Time: {current_time:.2f}/{integration:.2f}')  # Debugging statement
+        #if(total_frames % 10 == 0):
+        #print(f'Frame: {total_frames}, Time: {current_time:.2f}/{integration:.2f}')  # Debugging statement
+        if True:
+            status_text = f"""
+Frame: {total_frames},
+Time: {current_time:.2f}/{integration:.2f},
+Load: {load_on},
+Frequency: {freq:.2f}Hz,
+Integration Time: {integration:.2f}s
+Serial Port: {port}
+"""
 
         # Check if a half period has passed (i.e., time to toggle the load)
         if current_time - (last_toggle_time - start_time) >= half_period:
@@ -214,27 +271,58 @@ def get_lockin_frame(freq, port, integration):
         # print(f"time: {current_time}, phase: {phase}, sin: {sin_weight}, cos: {cos_weight} , load: {load_on}")
 
         # Multiply the frame by sin and cos to get in-phase and quadrature components
-        in_phase = frame * sin_weight
-        quadrature = frame * cos_weight
+        in_phase = raw_frame * sin_weight
+        quadrature = raw_frame * cos_weight
         
         # Accumulate the sums
         in_phase_sum += in_phase
         quadrature_sum += quadrature
 
+        if(is_capturing == False):
+            break
+
+    ser.write(b'0\n')
+    ser.close()
+
     # After integration time, normalize by the total frames (optional)
     in_phase_sum /= total_frames
     quadrature_sum /= total_frames
     
+
     return in_phase_sum, quadrature_sum
 
+def capture_lock_in():
+    global is_capturing, quad_frame, in_phase_frame, lock, fequency, port, integration
+
+    while is_capturing:
+        in_phase, quad = get_lockin_frame(fequency, port, integration)
+        if in_phase is not None and quad is not None:
+            with lock:
+                in_phase_frame = in_phase
+                quad_frame = quad
+
+def start_capture():
+    global is_capturing
+    is_capturing = True
+    thread = threading.Thread(target=capture_lock_in)
+    thread.start()
+    return thread
+
+def stop_capture(thread):
+    global is_capturing
+    is_capturing = False
+    if thread is not None:
+        thread.join()
 
 def animate_func(i):
-    global frame, paused, update_colormap, exposure, im, diff, start_skips
+    global frame, in_phase_frame, quad_frame, paused, update_colormap, exposure, im, diff, start_skips, lock_in_thread
     if lockin and start_skips > 0:
         frame = camera.get_frame()
         start_skips -= 1
     elif lockin:
-        frame, quad_frame = get_lockin_frame(fequency, port, integration)
+        if is_capturing == False:
+            lock_in_thread = start_capture()
+        #in_phase_frame, quad_frame = get_lockin_frame(fequency, port, integration)
     else:
         frame = camera.get_frame()
 
@@ -251,12 +339,16 @@ def animate_func(i):
             annotation_frame = frame
 
         im.set_array(show_frame)
+        if lockin:
+            im_in_phase.set_array(in_phase_frame)
+            im_quadrature.set_array(quad_frame)
 
         annotations.update(temp_annotations, annotation_frame, draw_temp)
 
         if exposure['auto']:
             update_colormap = utils.autoExposure(update_colormap, exposure, show_frame)
 
+        # TODO deal with saving the lock in stuff to a file
         log_annotations_to_csv(annotation_frame)
 
         if update_colormap:
@@ -264,6 +356,14 @@ def animate_func(i):
             fig.canvas.draw_idle()  # force update all, even with blit=True
             update_colormap = False
             return []
+
+        if lockin:
+            # adjust the color limits for the in-phase and quadrature frames
+            im_in_phase.set_clim(np.min(in_phase_frame), np.max(in_phase_frame))
+            im_quadrature.set_clim(np.min(quad_frame), np.max(quad_frame))
+            new_status_text = status_text
+            status_text_obj.set_text(new_status_text)
+            return [im, im_in_phase, im_quadrature, status_text_obj] + annotations.get()
 
     return [im] + annotations.get()
 
@@ -398,4 +498,5 @@ fig.canvas.mpl_connect('key_press_event', press)
 
 print_help()
 plt.show()
+stop_capture(lock_in_thread)
 camera.release()

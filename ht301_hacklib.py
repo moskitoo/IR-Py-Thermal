@@ -71,6 +71,7 @@ class Camera:
         self.camera_raw = camera_raw
         self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))-ROWS_SPECIAL_DATA
         self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.frame_rate = self.cap.get(cv2.CAP_PROP_FPS)
 
         self.userOffset = fixed_offset
 
@@ -255,6 +256,7 @@ class Camera:
     
     # read raw data from cam, seperate visible frame from metadata
     def read(self, raw = False) -> Tuple[bool, np.ndarray]:
+        """Retunrs a raw frame from the camera"""
         ret, frame_raw = self.cap.read()
         self.frame_raw_u16: np.ndarray = frame_raw.view(np.uint16).ravel()
         frame_visible = self.frame_raw_u16[:self.fourLinePara].copy().reshape(self.height, self.width)
@@ -276,11 +278,15 @@ class Camera:
         return ret, frame_visible
 
     def get_frame(self) -> np.ndarray:
+        """Returns a frame with temperature values"""
         ret, frame = self.read()
         info, lut = self.info()
         lut_frame = lut[frame]
         return lut_frame
-
+    
+    def convert_to_frame(self, frame_raw: np.ndarray, lut: np.ndarray) -> np.ndarray:
+        """Converts a raw frame to a frame with temperature values"""
+        return lut[frame_raw]        
 
     def set_correction(self, correction: float) -> None:
         self.sendFloatCommand(position=SET_CORRECTION, value=correction)

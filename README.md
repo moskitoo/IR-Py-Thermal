@@ -1,19 +1,19 @@
 # ht301_hacklib
-Thermal camera opencv python lib.
+### Thermal camera python library
 
 Supported thermal cameras:
 - Hti HT-301
-- Xtherm T3S, thanks to Angel-1024!
-- Xtherm T2L, T2S+, thanks to Christoph Mair
+- Xtherm T3S, thanks to Angel-1024
+- Xtherm T2L, T2S+, thanks to Christoph Mair and DiminDDL
 
 It's a very simple hacked together lib, might be useful for somebody,  
 uses `matplotlib` which is a little bit on the slow side,  
 or pure `opencv` - much faster but without most features
 
-Tested on ubuntu 20.04 and windows 11:
+Upon startup the app automatically looks for supported cameras by matching the resolutions.
 
 ```
-$ ./pyplot.py
+python ./pyplot.py
 keys:
     'h'      - help
     'q'      - quit
@@ -38,11 +38,16 @@ mouse:
     right button - add user temperature annotation
 ```
 
-Alternatively if you can specify the video device directly with `-d` to skip the search routine. Also for T2S+ V2 users (where the camera sends raw data and doesn't do onboard processing) you can specify the `-r` option to tell the program to treat the camera stream as raw sensor data. There is also the `-o` parameter which adds an offset to the entire frames temperature values. This is useful for calibrating the camera.
-Example:
+Alternatively you can specify the video device directly with `-d` to skip the search routine. 
+
+Also for T2S+ V2 users (and potentially for others, where the camera sends raw data and doesn't do onboard processing resulting in the image looking like a pixelated mess) you can specify the `-r` option to tell the program to treat the camera stream as raw sensor data. This will perform a few calibration routines and present you with a usable image doing the sensor processing in python. There is also the `-o` parameter which adds an offset to the entire frames temperature values. This is useful for calibrating the camera since the raw mode sometimes ends up with a constant offset to the image, but this is specific to the camera and thus can be found once and then used for subsequent runs.
+
+### Examples
+
+Example that reads device `/dev/video14` in raw mode and adds an offset of -12.3 to the temperature values:
 
 ```
-./pyplot.py -d /dev/video14 -r -o -12.3
+python ./pyplot.py -d /dev/video14 -r -o -12.3
 ```
 
 ![pyplot output](docs/pyplot-output1.png)
@@ -50,14 +55,25 @@ Example:
 
 View saved ('r' key) raw data file:
 ```
-$ ./pyplot.py 2022-09-11_18-49-07.npy
+python ./pyplot.py 2022-09-11_18-49-07.npy
 ```
 
-Opencv version:
+### Lock In Thermography
+
+This feature allows you to use the camera in a lock-in mode. This allows for very precise measurements of hotspots on anything that can be modulated in some way. Examples include silicon dies, circuit boards, people (lock in based on heart rate) and potentially many others. 
+
+As mentioned above the device under test needs to be stimulated on command from, the script sends commands into a provided serial port to do this.
+A `1\n` indicates that we want to turn the modulation on, a `0\n` turns it off. The modulation frequency, serial port and integration time are all provided as command line arguments.
+
+For example, the below command will use a modulation frequency of 1Hz, an integration time of 10s and send the commands to `/dev/ttyACM0`:
+
 ```
-$ ./opencv.py
+python ./pyplot.py -l 1 -p /dev/ttyACM0 -i 10
 ```
-![opencv output](docs/opencv-output.png)
+
+The modulation frequency should ideally be at least set 10x lower than the camera's frame rate, this is needed to get multiple samples as the sample heats up and cools down. The longer the integration time the more cycles will be "averaged" together, reducing noise, but the longer it takes to get a single frame. More info can be found in the paper linked below.
+
+![lockin output](docs/lock-in.png)
 
 <br>
 
@@ -71,4 +87,5 @@ $ ./opencv.py
 
 ## Related materials
 - https://www.mdpi.com/1424-8220/17/8/1718
+- https://www-old.mpi-halle.mpg.de/mpi/publi/pdf/540_02.pdf
 
