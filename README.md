@@ -1,4 +1,4 @@
-# ht301_hacklib
+# IRPyThermal
 ### Thermal camera python library
 
 Supported thermal cameras:
