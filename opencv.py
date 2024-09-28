@@ -2,7 +2,7 @@
 #!/usr/bin/python3
 import numpy as np
 import cv2
-import ht301_hacklib
+import irpythermal
 import utils
 import time
 from skimage.exposure import rescale_intensity, equalize_hist
@@ -10,7 +10,7 @@ import pickle
 draw_temp = True
 
 # cap = ht301_hacklib.HT301()
-camera = ht301_hacklib.Camera()
+camera = irpythermal.Camera()
 window_name = str(type(camera).__name__)
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 

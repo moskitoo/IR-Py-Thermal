@@ -1,11 +1,11 @@
 #!/usr/bin/python3
 import time
 import numpy as np
-import ht301_hacklib
+import irpythermal
 
 
 # create camera object and do a initial calibration
-cap = ht301_hacklib.HT301()
+cap = irpythermal.HT301()
 
 # read frame (raw ADC data)
 ret, frame = cap.read()

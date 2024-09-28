@@ -14,7 +14,7 @@ import math
 import serial
 import threading
 
-import ht301_hacklib
+import irpythermal
 
 from matplotlib.backend_bases import MouseButton
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -48,12 +48,12 @@ parser.add_argument('file', nargs='?', type=str, help='use the emulator with the
 args = parser.parse_args()
 
 # Choose the camera class
-camera: ht301_hacklib.Camera
+camera: irpythermal.Camera
 
 lockin = False
 
 if args.file and args.file.endswith('.npy'):
-    camera = ht301_hacklib.CameraEmulator(args.file)
+    camera = irpythermal.CameraEmulator(args.file)
 else:
     camera_kwargs = {}
     if args.rawcam:
@@ -77,7 +77,7 @@ else:
         port = args.port
         integration = args.integration
 
-    camera = ht301_hacklib.Camera(**camera_kwargs)
+    camera = irpythermal.Camera(**camera_kwargs)
 
 #see https://matplotlib.org/tutorials/colors/colormaps.html
 cmaps_idx = 1
