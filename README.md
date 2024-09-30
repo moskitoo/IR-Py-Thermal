@@ -62,8 +62,8 @@ python ./pyplot.py 2022-09-11_18-49-07.npy
 
 This feature allows you to use the camera in a lock-in mode. This allows for very precise measurements of hotspots on anything that can be modulated in some way. Examples include silicon dies, circuit boards, people (lock in based on heart rate) and potentially many others. 
 
-As mentioned above the device under test needs to be stimulated on command from, the script sends commands into a provided serial port to do this.
-A `1\n` indicates that we want to turn the modulation on, a `0\n` turns it off. The modulation frequency, serial port and integration time are all provided as command line arguments.
+As mentioned above the device under test needs to be stimulated on command, the script sends commands into a provided serial port to do this.
+A `1\n` indicates that we want to turn the supply/stimulant on, a `0\n` turns it off. The modulation frequency, serial port and integration time are all provided as command line arguments.
 
 For example, the below command will use a modulation frequency of 1Hz, an integration time of 10s and send the commands to `/dev/ttyACM0`:
 
