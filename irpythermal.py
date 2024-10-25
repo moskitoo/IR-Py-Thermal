@@ -393,7 +393,7 @@ class Camera:
         max_val = np.max(frame_visible_float)
         print(f"Min: {min_val}, Max: {max_val}, Avg: {np.mean(frame_visible_float)}")
         threshold_margin = (max_val - min_val) * 0.05  # Adjust the margin if not detected correctly
-        threshold = min_val + threshold_margin
+        threshold = float(min_val + threshold_margin)
 
         # if there are no dead pixels, we skip the dead pixel correction
         if np.count_nonzero(frame_visible_float < threshold) != 0:
