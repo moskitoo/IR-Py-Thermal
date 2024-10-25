@@ -7,10 +7,59 @@ import utils
 import time
 from skimage.exposure import rescale_intensity, equalize_hist
 import pickle
+import argparse
 draw_temp = True
 
 # cap = ht301_hacklib.HT301()
-camera = irpythermal.Camera()
+# camera = irpythermal.Camera()
+parser = argparse.ArgumentParser(description='Thermal Camera Viewer')
+parser.add_argument('-r', '--rawcam', action='store_true', help='use the raw camera')
+parser.add_argument('-d', '--device', type=str, help='use the camera at camera_path')
+parser.add_argument('-o', '--offset', type=float, help='set a fixed offset for the temperature data')
+
+# lock in thermometry options (all of these are requred)
+parser.add_argument('-l', '--lockin', type=float, help='enable lock-in thermometry with the given frequency (in Hz), ideally several times smaller than the camera fps')
+parser.add_argument('-p', '--port', type=str, help='set the serial port for the power supply control (will send 1 to turn on the load, 0 to turn it off new line terminated) at 115200 baud')
+parser.add_argument('-i', '--integration', type=float, help='set the integration time for the lock-in thermometry (in seconds)')
+
+
+
+parser.add_argument('file', nargs='?', type=str, help='use the emulator with the data in file.npy')
+args = parser.parse_args()
+
+# Choose the camera class
+camera: irpythermal.Camera
+
+lockin = False
+
+if args.file and args.file.endswith('.npy'):
+    camera = irpythermal.CameraEmulator(args.file)
+else:
+    camera_kwargs = {}
+    if args.rawcam:
+        camera_kwargs['camera_raw'] = True
+    if args.device:
+        camera_path = args.device
+        cv2_cam = cv2.VideoCapture(camera_path)
+        camera_kwargs['video_dev'] = cv2_cam
+    if args.offset:
+        camera_kwargs['fixed_offset'] = args.offset
+
+    if args.lockin:
+        lockin = True
+        draw_temp = False
+        # check if all lock-in thermometry options are provided
+        if not args.port or not args.integration:
+            print('Error: lock-in thermometry also requires --port and --integration options')
+            sys.exit(1)
+
+        fequency = args.lockin
+        port = args.port
+        integration = args.integration
+
+    camera = irpythermal.Camera(**camera_kwargs)
+
+
 window_name = str(type(camera).__name__)
 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
