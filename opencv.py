@@ -55,8 +55,40 @@ class ThermalDisplay:
             'VIRIDIS': cv2.COLORMAP_VIRIDIS
         }
         self.current_colormap = 'INFERNO'
+        self.scale_width = 30  # Width of temperature scale bar
+        self.scale_margin = 20  # Margin from the right edge
         cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
         
+    def create_scale_bar(self, height, min_temp, max_temp):
+        """Create a temperature scale bar"""
+        # Create gradient
+        scale = np.linspace(0, 255, height).astype(np.uint8)
+        scale = np.tile(scale, (self.scale_width, 1)).transpose()
+        
+        # Apply colormap
+        scale_colored = cv2.applyColorMap(scale, self.colormaps[self.current_colormap])
+        
+        # Add temperature labels
+        num_labels = 6  # Number of temperature labels to show
+        label_positions = np.linspace(0, height-1, num_labels).astype(int)
+        temperatures = np.linspace(max_temp, min_temp, num_labels)
+        
+        # Create white background for labels
+        label_background = np.ones((height, 50, 3), dtype=np.uint8) * 255
+        
+        # Add labels to background
+        for pos, temp in zip(label_positions, temperatures):
+            cv2.putText(label_background, 
+                       f'{temp:.1f}°C', 
+                       (2, pos + 5),  # +5 to center text vertically
+                       cv2.FONT_HERSHEY_SIMPLEX, 
+                       0.4,  # Font scale
+                       (0, 0, 0),  # Black text
+                       1)  # Line thickness
+        
+        # Combine scale bar and labels
+        return np.hstack((scale_colored, label_background))
+    
     def enhance_detail(self, frame):
         """Enhanced detail preservation with careful contrast adjustment"""
         # Convert to LAB color space for better detail enhancement
@@ -90,6 +122,9 @@ class ThermalDisplay:
         # Keep temperature data in float32 format
         frame = frame.astype(np.float32)
         
+        # Store original dimensions
+        orig_height, orig_width = frame.shape[:2]
+        
         # Apply sophisticated exposure control
         frame = self.exposure.adjust_exposure(frame)
         
@@ -102,14 +137,24 @@ class ThermalDisplay:
         # Enhance detail while preserving temperature relationships
         frame = self.enhance_detail(frame)
         
-        # High-quality scaling
+        # Create temperature scale bar
+        scale_bar = self.create_scale_bar(
+            orig_height * self.upscale_factor,
+            self.exposure.T_min,
+            self.exposure.T_max
+        )
+        
+        # High-quality scaling for main frame
         frame = self.apply_high_quality_scaling(frame)
         
         # Draw temperature data if needed
         if info is not None:
             self.draw_temperature_data(frame, info)
         
-        return frame
+        # Add scale bar to the right of the frame
+        frame_with_scale = np.hstack((frame, scale_bar))
+        
+        return frame_with_scale
     
     def draw_temperature_data(self, frame, info):
         """Draw temperature information with improved visibility"""
@@ -178,14 +223,14 @@ def main():
                        help='use the raw camera')
     parser.add_argument('-d', '--device', type=str,
                        help='use the camera at camera_path')
-    parser.add_argument('-o', '--offset', type=float, default=0.0,  # Added default value
+    parser.add_argument('-o', '--offset', type=float, default=0.0,
                        help='set a fixed offset for the temperature data')
     args = parser.parse_args()
     
     # Initialize camera with provided arguments
     camera_kwargs = {
         'camera_raw': args.rawcam,
-        'fixed_offset': args.offset if args.offset is not None else 0.0  # Ensure offset is never None
+        'fixed_offset': args.offset if args.offset is not None else 0.0
     }
     
     if args.device:
