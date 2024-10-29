@@ -355,6 +355,7 @@ def animate_func(i):
             im.set_clim(exposure['T_min'], exposure['T_max'])
             fig.canvas.draw_idle()  # force update all, even with blit=True
             update_colormap = False
+            print("returned state update_colormap")
             return []
 
         if lockin:
@@ -363,8 +364,10 @@ def animate_func(i):
             im_quadrature.set_clim(np.min(quad_frame), np.max(quad_frame))
             new_status_text = status_text
             status_text_obj.set_text(new_status_text)
+            print("returned state lockin")
             return [im, im_in_phase, im_quadrature, status_text_obj] + annotations.get()
 
+    print("returned state defalut")
     return [im] + annotations.get()
 
 def print_help():
@@ -491,12 +494,16 @@ def onmotion(event):
             annotations.set_roi(roi)
 
 
-anim = animation.FuncAnimation(fig, animate_func, interval = 1000 / fps, blit=True)
-fig.canvas.mpl_connect('button_press_event', onclick)
-fig.canvas.mpl_connect('motion_notify_event', onmotion)
-fig.canvas.mpl_connect('key_press_event', press)
+# anim = animation.FuncAnimation(fig, animate_func, interval = 1000 / fps, blit=True)
+# fig.canvas.mpl_connect('button_press_event', onclick)
+# fig.canvas.mpl_connect('motion_notify_event', onmotion)
+# fig.canvas.mpl_connect('key_press_event', press)
 
-print_help()
-plt.show()
-stop_capture(lock_in_thread)
-camera.release()
+# print_help()
+# plt.show()
+# stop_capture(lock_in_thread)
+# camera.release()
+
+while True:
+    results = animate_func(0)
+    print("")
