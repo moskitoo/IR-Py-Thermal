@@ -1,4 +1,3 @@
-
 #!/usr/bin/python3
 import numpy as np
 import cv2
@@ -8,234 +7,205 @@ import time
 from skimage.exposure import rescale_intensity, equalize_hist
 import pickle
 import argparse
-draw_temp = True
 
-# cap = ht301_hacklib.HT301()
-# camera = irpythermal.Camera()
-parser = argparse.ArgumentParser(description='Thermal Camera Viewer')
-parser.add_argument('-r', '--rawcam', action='store_true', help='use the raw camera')
-parser.add_argument('-d', '--device', type=str, help='use the camera at camera_path')
-parser.add_argument('-o', '--offset', type=float, help='set a fixed offset for the temperature data')
+class ExposureController:
+    def __init__(self):
+        self.auto = True
+        self.auto_type = 'ends'  # 'center' or 'ends'
+        self.T_min = 0.0
+        self.T_max = 50.0
+        self.T_margin = 2.0
+        self.update_needed = True
+    
+    def adjust_exposure(self, frame):
+        """Sophisticated auto-exposure control similar to Matplotlib version"""
+        if not self.auto:
+            return frame
+            
+        # Keep original temperature data
+        temp_data = frame.copy()
+        
+        if self.auto_type == 'ends':
+            # Use percentile instead of min/max to avoid outliers
+            p_low, p_high = np.percentile(temp_data, [2, 98])
+            self.T_min = p_low - self.T_margin
+            self.T_max = p_high + self.T_margin
+        else:  # center
+            mean_temp = np.mean(temp_data)
+            std_temp = np.std(temp_data)
+            self.T_min = mean_temp - 2 * std_temp
+            self.T_max = mean_temp + 2 * std_temp
+        
+        # Clip and normalize while preserving temperature relationships
+        normalized = np.clip(temp_data, self.T_min, self.T_max)
+        normalized = (normalized - self.T_min) / (self.T_max - self.T_min)
+        return normalized
 
-# lock in thermometry options (all of these are requred)
-parser.add_argument('-l', '--lockin', type=float, help='enable lock-in thermometry with the given frequency (in Hz), ideally several times smaller than the camera fps')
-parser.add_argument('-p', '--port', type=str, help='set the serial port for the power supply control (will send 1 to turn on the load, 0 to turn it off new line terminated) at 115200 baud')
-parser.add_argument('-i', '--integration', type=float, help='set the integration time for the lock-in thermometry (in seconds)')
+class ThermalDisplay:
+    def __init__(self, camera):
+        self.camera = camera
+        self.exposure = ExposureController()
+        self.window_name = str(type(camera).__name__)
+        self.orientation = 0
+        self.upscale_factor = 4
+        self.colormaps = {
+            'INFERNO': cv2.COLORMAP_INFERNO,
+            'PLASMA': cv2.COLORMAP_PLASMA,
+            'MAGMA': cv2.COLORMAP_MAGMA,
+            'VIRIDIS': cv2.COLORMAP_VIRIDIS
+        }
+        self.current_colormap = 'INFERNO'
+        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        
+    def enhance_detail(self, frame):
+        """Enhanced detail preservation with careful contrast adjustment"""
+        # Convert to LAB color space for better detail enhancement
+        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        l_channel, a, b = cv2.split(lab)
+        
+        # Apply CLAHE with optimized parameters
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced_l = clahe.apply(l_channel)
+        
+        # Merge back while preserving color
+        enhanced_lab = cv2.merge((enhanced_l, a, b))
+        return cv2.cvtColor(enhanced_lab, cv2.COLOR_LAB2BGR)
+    
+    def apply_high_quality_scaling(self, frame):
+        """Improved scaling with anti-aliasing"""
+        height, width = frame.shape[:2]
+        new_height = height * self.upscale_factor
+        new_width = width * self.upscale_factor
+        
+        # Use area interpolation for downscaling and cubic for upscaling
+        if self.upscale_factor > 1:
+            return cv2.resize(frame, (new_width, new_height), 
+                            interpolation=cv2.INTER_CUBIC)
+        else:
+            return cv2.resize(frame, (new_width, new_height), 
+                            interpolation=cv2.INTER_AREA)
+    
+    def process_frame(self, frame, info):
+        """Main processing pipeline with improved quality"""
+        # Keep temperature data in float32 format
+        frame = frame.astype(np.float32)
+        
+        # Apply sophisticated exposure control
+        frame = self.exposure.adjust_exposure(frame)
+        
+        # Convert to 8-bit while preserving detail
+        frame = (frame * 255).astype(np.uint8)
+        
+        # Apply colormap
+        frame = cv2.applyColorMap(frame, self.colormaps[self.current_colormap])
+        
+        # Enhance detail while preserving temperature relationships
+        frame = self.enhance_detail(frame)
+        
+        # High-quality scaling
+        frame = self.apply_high_quality_scaling(frame)
+        
+        # Draw temperature data if needed
+        if info is not None:
+            self.draw_temperature_data(frame, info)
+        
+        return frame
+    
+    def draw_temperature_data(self, frame, info):
+        """Draw temperature information with improved visibility"""
+        for point_type in ['Tmin', 'Tmax', 'Tcenter']:
+            point = info[f'{point_type}_point']
+            temp = info[f'{point_type}_C']
+            color = {
+                'Tmin': (255, 128, 128),
+                'Tmax': (0, 128, 255),
+                'Tcenter': (255, 255, 255)
+            }[point_type]
+            
+            # Scale point position
+            x = int(point[0] * self.upscale_factor)
+            y = int(point[1] * self.upscale_factor)
+            
+            # Draw with improved visibility
+            cv2.circle(frame, (x, y), 2, color, -1)
+            cv2.putText(frame, f'{temp:.1f}°C', (x + 5, y + 5),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
+    def run(self):
+        while True:
+            ret, frame = self.camera.read()
+            if not ret:
+                break
+                
+            info, lut = self.camera.info()
+            
+            # Process frame with improved pipeline
+            processed_frame = self.process_frame(frame, info)
+            
+            cv2.imshow(self.window_name, processed_frame)
+            
+            key = cv2.waitKey(1) & 0xFF
+            if not self.handle_keyboard(key, frame):
+                break
+        
+        self.camera.release()
+        cv2.destroyAllWindows()
+    
+    def handle_keyboard(self, key, frame):
+        """Handle keyboard controls"""
+        if key == ord('q'):
+            return False
+        elif key == ord('u'):
+            self.camera.calibrate()
+        elif key == ord('s'):
+            cv2.imwrite(f"thermal_{time.strftime('%Y%m%d_%H%M%S')}.png", frame)
+        elif key == ord('c'):
+            # Cycle through colormaps
+            available_maps = list(self.colormaps.keys())
+            current_idx = available_maps.index(self.current_colormap)
+            self.current_colormap = available_maps[(current_idx + 1) % len(available_maps)]
+        elif key == ord('e'):
+            # Toggle auto exposure
+            self.exposure.auto ^= True
+        elif key == ord('t'):
+            # Toggle exposure type
+            self.exposure.auto_type = 'center' if self.exposure.auto_type == 'ends' else 'ends'
+        return True
 
-
-parser.add_argument('file', nargs='?', type=str, help='use the emulator with the data in file.npy')
-args = parser.parse_args()
-
-# Choose the camera class
-camera: irpythermal.Camera
-
-lockin = False
-
-if args.file and args.file.endswith('.npy'):
-    camera = irpythermal.CameraEmulator(args.file)
-else:
-    camera_kwargs = {}
-    if args.rawcam:
-        camera_kwargs['camera_raw'] = True
+def main():
+    parser = argparse.ArgumentParser(description='Enhanced Thermal Camera Viewer')
+    parser.add_argument('-r', '--rawcam', action='store_true',
+                       help='use the raw camera')
+    parser.add_argument('-d', '--device', type=str,
+                       help='use the camera at camera_path')
+    parser.add_argument('-o', '--offset', type=float, default=0.0,  # Added default value
+                       help='set a fixed offset for the temperature data')
+    args = parser.parse_args()
+    
+    # Initialize camera with provided arguments
+    camera_kwargs = {
+        'camera_raw': args.rawcam,
+        'fixed_offset': args.offset if args.offset is not None else 0.0  # Ensure offset is never None
+    }
+    
     if args.device:
-        camera_path = args.device
-        cv2_cam = cv2.VideoCapture(camera_path)
+        cv2_cam = cv2.VideoCapture(args.device)
         camera_kwargs['video_dev'] = cv2_cam
-    if args.offset:
-        camera_kwargs['fixed_offset'] = args.offset
+    
+    try:
+        camera = irpythermal.Camera(**camera_kwargs)
+        
+        # Initialize user offset if not already set
+        if not hasattr(camera, 'userOffset') or camera.userOffset is None:
+            camera.userOffset = 0.0
+            
+        # Create and run the display
+        display = ThermalDisplay(camera)
+        display.run()
+    except Exception as e:
+        print(f"Error initializing camera: {str(e)}")
+        if 'cv2_cam' in locals():
+            cv2_cam.release()
 
-    if args.lockin:
-        lockin = True
-        draw_temp = False
-        # check if all lock-in thermometry options are provided
-        if not args.port or not args.integration:
-            print('Error: lock-in thermometry also requires --port and --integration options')
-            sys.exit(1)
-
-        fequency = args.lockin
-        port = args.port
-        integration = args.integration
-
-    camera = irpythermal.Camera(**camera_kwargs)
-
-
-window_name = str(type(camera).__name__)
-cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-
-orientation = 0  # 0, 90, 180, 270
-
-
-def increase_luminance_contrast(frame):
-    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
-    l_channel, a, b = cv2.split(lab)
-
-    # Applying CLAHE to L-channel
-    # feel free to try different values for the limit and grid size:
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    cl = clahe.apply(l_channel)
-
-    # merge the CLAHE enhanced L-channel with the a and b channel
-    limg = cv2.merge((cl, a, b))
-    frame = cv2.cvtColor(limg, cv2.COLOR_LAB2BGR)
-    return frame
-
-
-def rotatate_coordinate(pos, shape, orientation):
-    x, y = pos
-    len_x, len_y = shape
-    if orientation == 0:
-        return x, y
-    elif orientation == 90:
-        return y, len_x - x
-    elif orientation == 180:
-        return len_x - x, len_y - y
-    elif orientation == 270:
-        return len_y - y, x
-
-
-def rotate_frame(frame, orientation):
-    if orientation == 0:
-        return frame
-    elif orientation == 90:
-        return np.rot90(frame).copy()
-    elif orientation == 180:
-        return np.rot90(frame, 2).copy()
-    elif orientation == 270:
-        return np.rot90(frame, 3).copy()
-    else:
-        return frame
-
-
-class FpsCounter:
-    def __init__(self, alpha=0.9, init_frame_count=10):
-        self.alpha = alpha
-        self.init_frame_count = init_frame_count
-        self.frame_times = []
-        self.start_time = time.time()
-        self.ema_duration = None
-
-    def update(self):
-        current_time = time.time()
-        frame_duration = current_time - self.start_time
-
-        if len(self.frame_times) < self.init_frame_count:
-            self.frame_times.append(frame_duration)
-            self.ema_duration = sum(self.frame_times) / len(self.frame_times)
-        else:
-            self.ema_duration = (
-                self.alpha * self.ema_duration + (1.0 - self.alpha) * frame_duration
-            )
-
-        self.start_time = current_time
-
-    def get_fps(self):
-        if self.ema_duration is not None:
-            return 1.0 / self.ema_duration
-        else:
-            return None
-
-
-fps_counter = FpsCounter(alpha=0.8)
-upscale_factor = 4
-while True:
-    ret, frame = camera.read()
-    frame_raw = frame.copy()
-    fps_counter.update()
-    shape = frame.shape[0]
-    info, lut = camera.info()
-    frame = frame.astype(np.float32)
-
-    # Sketchy auto-exposure
-    frame = rescale_intensity(
-        equalize_hist(frame), in_range="image", out_range=(0, 255)
-    ).astype(np.uint8)
-
-    frame = cv2.applyColorMap(frame, cv2.COLORMAP_INFERNO)
-
-    frame = increase_luminance_contrast(frame)
-
-    frame = rotate_frame(frame, orientation)
-
-    frame = np.kron(frame, np.ones((upscale_factor, upscale_factor, 1))).astype(
-        np.uint8
-    )
-    if draw_temp:
-        utils.drawTemperature(
-            frame,
-            rotatate_coordinate(
-                map(lambda x: upscale_factor * x, info["Tmin_point"]),
-                (camera.width * upscale_factor, camera.height * upscale_factor),
-                orientation,
-            ),
-            info["Tmin_C"],
-            (255, 128, 128),
-        )
-        utils.drawTemperature(
-            frame,
-            rotatate_coordinate(
-                map(lambda x: upscale_factor * x, info["Tmax_point"]),
-                (camera.width * upscale_factor, camera.height * upscale_factor),
-                orientation,
-            ),
-            info["Tmax_C"],
-            (0, 128, 255),
-        )
-        utils.drawTemperature(
-            frame,
-            rotatate_coordinate(
-                map(lambda x: upscale_factor * x, info["Tcenter_point"]),
-                (camera.width * upscale_factor, camera.height * upscale_factor),
-                orientation,
-            ),
-            info["Tcenter_C"],
-            (255, 255, 255),
-        )
-        # draw fps
-
-        # to keep the fps displayed from jittering too much, we average the last 10 frames
-        cv2.putText(
-            frame,
-            f"FPS: {fps_counter.get_fps():0.1f}",
-            (2, 12),
-            cv2.FONT_HERSHEY_PLAIN,
-            1,
-            (255, 255, 255),
-            1,
-            cv2.LINE_8,
-        )
-
-    cv2.imshow(window_name, frame)
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord("q"):
-        break
-    if key == ord("u"):
-        camera.calibrate()
-    if key == ord("k"):
-        camera.temperature_range_normal()
-        # some delay is needed before calibration
-        for _ in range(50):
-            camera.read()
-        camera.calibrate()
-    if key == ord("l"):
-        camera.temperature_range_high()
-        # some delay is needed before calibration
-        for _ in range(50):
-            camera.read()
-        camera.calibrate() 
-    if key == ord("s"):
-        cv2.imwrite(time.strftime("%Y-%m-%d_%H-%M-%S") + ".png", frame)
-    if key == ord("o"):
-        orientation = (orientation - 90) % 360
-        (_, _, w, h) = cv2.getWindowImageRect(window_name)
-        cv2.resizeWindow(window_name, h, w)
-    if key == ord("a"):
-        # save to disk
-        ret, frame = camera.cap.read()
-        data = (frame)
-        name = time.strftime("%Y-%m-%d_%H-%M-%S") + ".pkl"
-        with open(name, "wb") as f:
-            pickle.dump(data, f)
-
-camera.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    main()
