@@ -5,21 +5,42 @@ import numpy as np
 import requests
 import camera_driver.irpythermal as irpythermal
 
+# Configuration variables
+API_URL = 'http://127.0.0.1:5010/_api/state-machine/update-sensor-image'
+FRAMES_PER_SECOND = 1  # Images per second to publish
+
 class ThermalCameraStreamer:
-    def __init__(self, api_url='http://127.0.0.1:5010/_api/state-machine/update-sensor-image'):
+    def __init__(self, 
+                 api_url=API_URL, 
+                 fps=FRAMES_PER_SECOND):
+        """
+        Initialize the thermal camera streamer.
+        
+        :param api_url: API endpoint URL to send images
+        :param fps: Frames per second to publish (default 1)
+        """
         self.api_url = api_url
+        self.fps = max(0.1, min(fps, 30))  # Limit fps between 0.1 and 30
         self.camera = None
         self._connect_camera()
 
     def _connect_camera(self):
+        """
+        Establish connection with the thermal camera.
+        """
         try:
             self.camera = irpythermal.Camera(camera_raw=True)
-            print("Camera connected successfully")
+            print(f"Camera connected successfully. Publishing at {self.fps} FPS")
         except Exception as e:
             print(f"Failed to connect to camera: {e}")
             self.camera = None
 
     def capture_thermal_frame(self):
+        """
+        Capture and process a frame from the thermal camera.
+        
+        :return: Processed color frame or None if capture fails
+        """
         if not self.camera:
             self._connect_camera()
             if not self.camera:
@@ -51,6 +72,12 @@ class ThermalCameraStreamer:
             return None
 
     def send_image_to_api(self, frame):
+        """
+        Send the processed image to the API endpoint.
+        
+        :param frame: OpenCV image to send
+        :return: True if image sent successfully, False otherwise
+        """
         if frame is None:
             print("Cannot send None frame")
             return False
@@ -83,8 +110,14 @@ class ThermalCameraStreamer:
             return False
 
     def start_streaming(self):
+        """
+        Continuously capture thermal images and send to API at specified FPS
+        """
         try:
             while True:
+                # Record start time of iteration
+                start_time = time.time()
+                
                 # Capture frame
                 frame = self.capture_thermal_frame()
                 
@@ -92,8 +125,10 @@ class ThermalCameraStreamer:
                 if frame is not None:
                     self.send_image_to_api(frame)
                 
-                # Wait for 1 second before next capture
-                time.sleep(1)
+                # Calculate sleep time to maintain desired FPS
+                iteration_time = time.time() - start_time
+                sleep_time = max(0, 1/self.fps - iteration_time)
+                time.sleep(sleep_time)
         
         except KeyboardInterrupt:
             print("\nImage capture and sending stopped by user.")
@@ -101,6 +136,9 @@ class ThermalCameraStreamer:
             print(f"An unexpected error occurred: {e}")
 
 def main():
+    """
+    Initialize and start thermal camera streaming
+    """
     streamer = ThermalCameraStreamer()
     streamer.start_streaming()
 
