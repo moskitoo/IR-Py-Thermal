@@ -6,7 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.patches as patches
-import utils
+import camera_driver.utils as utils
 import time
 import sys
 import csv

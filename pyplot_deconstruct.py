@@ -2,7 +2,7 @@
 import argparse
 import cv2
 import numpy as np
-import irpythermal
+import camera_driver.irpythermal as irpythermal
 
 
 parser = argparse.ArgumentParser(description='Thermal Camera Viewer')
